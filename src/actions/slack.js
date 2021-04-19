@@ -2,9 +2,12 @@ const { RTMClient } = require('@slack/rtm-api')
 
 export const ADD_TEAM                     = 'ADD_TEAM'
 export const RTM_AUTHENTICATED            = 'RTM_AUTHENTICATED'
+export const RTM_PONG                     = 'RTM_PONG'
 export const RTM_MESSAGE                  = 'RTM_MESSAGE'
+export const RTM_USER_TYPING              = 'RTM_USER_TYPING'
 export const RTM_CHANNEL_MARKED           = 'RTM_CHANNEL_MARKED'
 export const RTM_IM_MARKED                = 'RTM_IM_MARKED'
+export const RTM_MPIM_MARKED              = 'RTM_MPIM_MARKED'
 export const RTM_GROUP_MARKED             = 'RTM_GROUP_MARKED'
 export const RTM_CHANNEL_JOINED           = 'RTM_CHANNEL_JOINED'
 export const RTM_GROUP_JOINED             = 'RTM_GROUP_JOINED'
@@ -56,12 +59,26 @@ export function rtmConnect(token) {
             console.log('READY: ', rtm)
         })
 
+        rtm.on('pong', (event) => {
+            const teamId = rtm.activeTeamId
+
+            dispatch(handlePong(teamId, event))
+        })
+
         rtm.on('message', (event) => {
             console.log('MESSAGE: ', event)
 
             const teamId = (event.team) ? event.team : rtm.activeTeamId
 
             dispatch(handleMessage(teamId, event))
+        })
+
+        rtm.on('user_typing', (event) => {
+            console.log('USER_TYPING: ', event)
+
+            const teamId = rtm.activeTeamId
+
+            dispatch(handleUserTyping(teamId, event))
         })
 
         rtm.on('channel_marked', (event) => {
@@ -88,6 +105,14 @@ export function rtmConnect(token) {
             const { channel: channelId, ts } = event
 
             dispatch(getConversationHistory(teamId, channelId, ts))
+        })
+
+        rtm.on('mpim_marked', (event) => {
+            console.log('MPIM MARKED: ', event)
+
+            const teamId = rtm.activeTeamId
+
+            dispatch(handleMpimMarked(teamId, event))
         })
 
         rtm.on('group_marked', (event) => {
@@ -131,9 +156,25 @@ export function handleAuthenticated(rtm, token, event) {
     }
 }
 
+export function handlePong(teamId, event) {
+    return {
+        type: RTM_PONG,
+        teamId,
+        event
+    }
+}
+
 export function handleMessage(teamId, event) {
     return {
         type: RTM_MESSAGE,
+        teamId,
+        event
+    }
+}
+
+export function handleUserTyping(teamId, event) {
+    return {
+        type: RTM_USER_TYPING,
         teamId,
         event
     }
@@ -150,6 +191,14 @@ export function handleChannelMarked(teamId, event) {
 export function handleImMarked(teamId, event) {
     return {
         type: RTM_IM_MARKED,
+        teamId,
+        event
+    }
+}
+
+export function handleMpimMarked(teamId, event) {
+    return {
+        type: RTM_MPIM_MARKED,
         teamId,
         event
     }

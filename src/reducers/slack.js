@@ -10,8 +10,11 @@ import {
     ADD_TEAM,
     RTM_AUTHENTICATED,
     RTM_MESSAGE,
+    RTM_PONG,
+    RTM_USER_TYPING,
     RTM_CHANNEL_MARKED,
     RTM_IM_MARKED,
+    RTM_MPIM_MARKED,
     RTM_GROUP_MARKED,
     RTM_CHANNEL_JOINED,
     RTM_GROUP_JOINED,
@@ -32,13 +35,13 @@ export default function slack(state = defaultSlackState, action) {
     switch (action.type) {
         case REQUEST_CONFIG:
             return update(state, {
-                'loadingConfig': {
+                loadingConfig: {
                     $set: true
                 }
             })
         case RECEIVE_CONFIG:
             let newState = {
-                'loadingConfig': {
+                loadingConfig: {
                     $set: false
                 }
             }
@@ -61,7 +64,7 @@ export default function slack(state = defaultSlackState, action) {
         case ADD_TEAM:
             if (state.tokens.includes(action.token) == false) {
                 return update(state, {
-                    'tokens': {
+                    tokens: {
                         $push: [ action.token ]
                     }
                 })
@@ -166,11 +169,18 @@ export default function slack(state = defaultSlackState, action) {
                             rtm,
                             users,
                             conversations,
-                            unread: []
+                            unread: [],
+                            typing: {}
                         }
                     }
                 }
             })
+        }
+        case RTM_PONG:
+        {
+            const { teamId } = action
+
+            return _processTyping(teamId, undefined, state)
         }
         case RTM_MESSAGE:
         {
@@ -243,7 +253,7 @@ export default function slack(state = defaultSlackState, action) {
                 const unreadCount = state.teams[teamId].conversations[channelId].unreadCount
 
                 if (rollback) {
-                    channelInfo.unreadCount = (unreadCount > 0) ? unreadCount = 1 : 0
+                    channelInfo.unreadCount = (unreadCount > 0) ? unreadCount - 1 : 0
                 } else {
                     channelInfo.unreadCount = unreadCount + 1
                 }
@@ -263,7 +273,15 @@ export default function slack(state = defaultSlackState, action) {
 
             return _processUnread(teamId, newState)
         }
+        case RTM_USER_TYPING:
+        {
+            const { teamId, event } = action
+            const { channel: channelId } = event
+
+            return _processTyping(teamId, channelId, state)
+        }
         case RTM_CHANNEL_MARKED:
+        case RTM_MPIM_MARKED:
         case RTM_GROUP_MARKED:
         {
             const { teamId, event } = action
@@ -579,10 +597,57 @@ function _processUnread(teamId, state) {
     })
 
     return update(state, {
-        'teams': {
+        teams: {
             [teamId]: {
-                'unread': {
+                unread: {
                     $set: unread
+                }
+            }
+        }
+    })
+}
+
+function _processTyping(teamId, channelId, state) {
+    const now = Date.now() / 1000
+
+    /*
+     * Filter any typing events that are more than 10 seconds old.
+     *
+     */
+
+    let typing = {}
+
+    Object.keys(state.teams[teamId].typing).forEach((id) => {
+        const { name, ts } = state.teams[teamId].typing[id]
+
+        if (ts < now - 10) {
+            return
+        }
+
+        if (channelId && (id == channelId)) {
+            return
+        }
+
+        typing[id] = { name, ts }
+    })
+
+    /*
+     * Add the current channel / user to the typing list.
+     *
+     */
+
+    if (channelId) {
+        const conversation = state.teams[teamId].conversations[channelId]
+        const name = (_.isUndefined(conversation)) ? '-' : conversation.name
+
+        typing[channelId] = { name, ts: now }
+    }
+
+    return update(state, {
+        teams: {
+            [teamId]: {
+                typing: {
+                    $set: typing
                 }
             }
         }
