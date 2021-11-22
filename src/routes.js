@@ -5,11 +5,15 @@ import routes from './constants/routes'
 
 import App from './containers/app'
 import HomePage from './containers/home'
+import Teams from './containers/teams'
 
-export default () => (
-    <App>
-        <Switch>
-            <Route path={routes.HOME} component={HomePage} />
-        </Switch>
-    </App>
-)
+export default () => {
+    return (
+        <App>
+            <Switch>
+                <Route exact path={routes.HOME} component={HomePage} />
+                <Route path={routes.TEAMS} component={Teams} />
+            </Switch>
+        </App>
+    )
+}

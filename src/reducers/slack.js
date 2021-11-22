@@ -8,6 +8,7 @@ import {
 
 import {
     ADD_TEAM,
+    REQUEST_CONNECTION,
     RTM_AUTHENTICATED,
     RTM_MESSAGE,
     RTM_PONG,
@@ -26,9 +27,9 @@ import {
 } from '../actions/slack'
 
 const defaultSlackState = {
-    'loadingConfig': false,
-    'tokens': [],
-    'teams': {}
+    loadingConfig: false,
+    tokens: {},
+    teams: {}
 }
 
 export default function slack(state = defaultSlackState, action) {
@@ -46,31 +47,55 @@ export default function slack(state = defaultSlackState, action) {
                 }
             }
 
-            let newTokens = []
+            let newTokens = {}
 
             action.config.tokens.forEach((token) => {
-                if (state.tokens.includes(token) == false) {
-                    newTokens.push(token)
+                if (_.isUndefined(state.tokens[token])) {
+                    newTokens[token] = {
+                        $set: {
+                            connected: false
+                        }
+                    }
                 }
             })
 
-            if (newTokens.length > 0) {
-                newState.tokens = {
-                    $push: newTokens
-                }
+            if (Object.keys(newTokens).length > 0) {
+                newState.tokens = newTokens
             }
 
             return update(state, newState)
         case ADD_TEAM:
-            if (state.tokens.includes(action.token) == false) {
+        {
+            const token = action.token
+
+            if (_.isUndefined(state.tokens[token])) {
                 return update(state, {
                     tokens: {
-                        $push: [ action.token ]
+                        [token]: {
+                            $set: {
+                                connected: false
+                            }
+                        }
                     }
                 })
             }
 
             return state
+        }
+        case REQUEST_CONNECTION:
+        {
+            const token = action.token
+
+            return update(state, {
+                tokens: {
+                    [token]: {
+                        connected: {
+                            $set: true
+                        }
+                    }
+                }
+            })
+        }
         case RTM_AUTHENTICATED:
         {
             const rtm = action.rtm
@@ -188,6 +213,10 @@ export default function slack(state = defaultSlackState, action) {
             const { channel: channelId, subtype, ts } = event
 
             const team = state.teams[teamId]
+
+            if (_.isUndefined(team)) {
+                return state
+            }
 
             let lastMessage = ts
             let rollback = false
@@ -566,17 +595,21 @@ export default function slack(state = defaultSlackState, action) {
 }
 
 function _makeGroupName(members, users) {
-    let groupName = ''
+    let groupName = 'Unknown'
 
-    members.forEach((userId, index) => {
-        const name = users[userId] ? users[userId].displayName : userId
+    if (!_.isUndefined(members)) {
+        groupName = ''
 
-        if (index > 0) {
-            groupName += ' / '
-        }
+        members.forEach((userId, index) => {
+            const name = users[userId] ? users[userId].displayName : userId
 
-        groupName += name
-    })
+            if (index > 0) {
+                groupName += ' / '
+            }
+
+            groupName += name
+        })
+    }
 
     return groupName
 }

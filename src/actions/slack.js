@@ -1,6 +1,7 @@
 const { RTMClient } = require('@slack/rtm-api')
 
 export const ADD_TEAM                     = 'ADD_TEAM'
+export const REQUEST_CONNECTION           = 'REQUEST_CONNECTION'
 export const RTM_AUTHENTICATED            = 'RTM_AUTHENTICATED'
 export const RTM_PONG                     = 'RTM_PONG'
 export const RTM_MESSAGE                  = 'RTM_MESSAGE'
@@ -28,6 +29,8 @@ export function rtmConnect(token) {
     const rtm = new RTMClient(token, { useRtmConnect: false })
 
     return (dispatch, getState) => {
+        dispatch(requestTokenConnection(token))
+
         rtm.on('authenticated', (event) => {
             console.log('AUTHENTICATED: ', event)
 
@@ -144,6 +147,13 @@ export function rtmConnect(token) {
         })
 
         rtm.start()
+    }
+}
+
+export function requestTokenConnection(token) {
+    return {
+        type: REQUEST_CONNECTION,
+        token
     }
 }
 
