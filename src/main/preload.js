@@ -5,6 +5,11 @@ contextBridge.exposeInMainWorld('electron', {
         rtmConnect(token) {
             ipcRenderer.send('rtmConnect', token);
         },
+        requestTest(teamId, testType) {
+            console.log("[requestTest] sending test ", testType, " for team ", teamId, " to main process")
+
+            ipcRenderer.send('test', teamId, testType)
+        },
         on(channel, func) {
             const validChannels = ['log', 'rtmConnect', 'slackAuthenticated', 'teamUpdate'];
 

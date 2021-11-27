@@ -16,13 +16,13 @@ export default function SlackBridge(props) {
         })
 
         window.electron.ipcRenderer.on('slackAuthenticated', ({ token, event }) => {
-            console.log(`[slackAuthenticated] token=${token}, event=${event}`)
+            console.log(`[slackAuthenticated] token=${token}, event=`, event)
 
             dispatch(handleAuthenticated(token, event))
         })
 
         window.electron.ipcRenderer.on('teamUpdate', ({ teamId, name, unread, typing }) => {
-            console.log(`[teamUpdate]: teamId=${teamId}, name=${name}, unread=${unread}, typing=${typing}`)
+            console.log(`[teamUpdate]: teamId=${teamId}, name=${name}, unread=`, unread, ', typing=', typing)
 
             dispatch(handleTeamUpdate(teamId, name, unread, typing))
         })

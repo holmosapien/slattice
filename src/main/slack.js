@@ -16,13 +16,15 @@ export function rtmConnect(context, token) {
         _processUnread(context, teamId)
         _processTyping(context, teamId, undefined)
 
+        _sendTeamUpdate(context, teamId)
+
         return teams[teamId].rtm
     }
 
     const rtm = new RTMClient(token, { useRtmConnect: false })
 
     rtm.on('authenticated', (event) => {
-        context.logger('AUTHENTICATED')
+        context.logger('AUTHENTICATED: ', event)
 
         context.window.webContents.send('slackAuthenticated', { token, event })
 
@@ -133,6 +135,195 @@ export function rtmConnect(context, token) {
     return rtm
 }
 
+export function executeTest(context, teamId, testType) {
+    let channelId = undefined
+    let destination = 'message'
+
+    switch (testType) {
+        case 'activeChannelMessage':
+        {
+            const channel = _.sample(teams[teamId].authenticationEvent.channels.filter((channel) => {
+                const { is_member: isMember, is_open: isOpen, is_mpim: isIm } = channel
+
+                return (isMember && !isIm)
+            }))
+
+            context.logger("[executeTest] active channel: ", channel)
+
+            if (!_.isUndefined(channel)) {
+                channelId = channel.id
+            }
+
+            break
+        }
+        case 'activeGroupMessage':
+        {
+            const group = _.sample(teams[teamId].authenticationEvent.groups.filter((group) => {
+                const { is_open: isOpen, is_mpim: isIm } = group
+
+                return (isOpen && !isIm)
+            }))
+
+            context.logger("[executeTest] active group: ", group)
+
+            if (!_.isUndefined(group)) {
+                channelId = group.id
+            }
+
+            break
+        }
+        case 'activeImMessage':
+        {
+            const im = _.sample(teams[teamId].authenticationEvent.ims.filter((im) => {
+                const { is_open: isOpen } = im
+
+                return isOpen
+            }))
+
+            context.logger("[executeTest] active IM: ", im)
+
+            if (!_.isUndefined(im)) {
+                channelId = im.id
+            }
+
+            break
+        }
+        case 'activeMpimMessage':
+        {
+            const channel = _.sample(teams[teamId].authenticationEvent.channels.filter((channel) => {
+                const { is_member: isMember, is_open: isOpen, is_mpim: isIm } = channel
+
+                return (isMember && isIm && isOpen)
+            }))
+
+            context.logger("[executeTest] active MPIM: ", channel)
+
+            if (!_.isUndefined(channel)) {
+                channelId = channel.id
+            }
+
+            break
+        }
+        case 'closedChannelMessage':
+        {
+            const channel = _.sample(teams[teamId].authenticationEvent.channels.filter((channel) => {
+                const { is_member: isMember, is_open: isOpen, is_mpim: isIm } = channel
+
+                return (!isMember && !isIm)
+            }))
+
+            context.logger("[executeTest] closed channel: ", channel)
+
+            if (!_.isUndefined(channel)) {
+                channelId = channel.id
+            }
+
+            break
+        }
+        case 'closedGroupMessage':
+        {
+            const group = _.sample(teams[teamId].authenticationEvent.groups.filter((group) => {
+                const { is_open: isOpen, is_mpim: isIm } = group
+
+                return (!isOpen && !isIm)
+            }))
+
+            context.logger("[executeTest] closed group: ", group)
+
+            if (!_.isUndefined(group)) {
+                channelId = group.id
+            }
+
+            break
+        }
+        case 'closedImMessage':
+        {
+            const im = _.sample(teams[teamId].authenticationEvent.ims.filter((im) => {
+                const { is_open: isOpen } = im
+
+                return !isOpen
+            }))
+
+            context.logger("[executeTest] closed IM: ", im)
+
+            if (!_.isUndefined(im)) {
+                channelId = im.id
+            }
+
+            break
+        }
+        case 'closedMpimMessage':
+        {
+            const channel = _.sample(teams[teamId].authenticationEvent.channels.filter((channel) => {
+                const { is_member: isMember, is_open: isOpen, is_mpim: isIm } = channel
+
+                return (isMember && isIm && !isOpen)
+            }))
+
+            context.logger("[executeTest] closed MPIM: ", channel)
+
+            if (!_.isUndefined(channel)) {
+                channelId = channel.id
+            }
+
+            break
+        }
+        case 'unknownUserImMessage':
+        {
+
+            /*
+             * For this test we must find an IM session, then delete the user from the team's
+             * "users" array. This will force a new lookup of that user's information.
+             *
+             */
+
+            const luckyIm = _.sample(_.filter(teams[teamId].conversations, { isIm: true }))
+            const imId = luckyIm.id
+            const userId = luckyIm.userId
+            const luckyUser = teams[teamId].users[userId]
+
+            context.logger("[executeTest] unknown user: ", luckyUser)
+
+            channelId = imId
+
+            delete teams[teamId].conversations[channelId]
+
+            break
+        }
+        case 'invalidChannelMessage':
+            channelId = 'AABBCCDD'
+
+            break
+        case 'activeChannelTyping':
+            const channel = _.sample(teams[teamId].conversations)
+
+            channelId = channel.id
+            destination = 'typing'
+
+            break
+        case 'unknownChannelTyping':
+            channelId = 'AABBCCDD'
+            destination = 'typing'
+
+            break
+        default:
+            break
+    }
+
+    if (!_.isUndefined(channelId)) {
+        if (destination == 'message') {
+            const now = String(Date.now() / 1000)
+            const event = { channel: channelId, ts: now }
+
+            _handleMessage(context, teamId, event)
+        } else if (destination == 'typing') {
+            const event = { channel: channelId }
+
+            _handleUserTyping(context, teamId, event)
+        }
+    }
+}
+
 function _handleAuthenticated(context, rtm, token, event) {
     const { id: teamId, name: teamName } = event.team
 
@@ -145,6 +336,7 @@ function _handleAuthenticated(context, rtm, token, event) {
             const displayName = realName || name
 
             users[id] = {
+                id,
                 displayName,
                 name,
                 realName,
@@ -160,17 +352,19 @@ function _handleAuthenticated(context, rtm, token, event) {
 
         if (isMember && (!isIm || (isIm && isOpen))) {
             conversations[id] = {
+                id,
+                isIm: false,
+                isMpim: false,
                 lastMessage: undefined,
                 lastRead,
                 name,
-                unreadCount: 0,
-                loading: false
+                unreadCount: 0
             }
         }
     })
 
     event.groups.forEach((group) => {
-        const { id, is_open: isOpen, last_read: lastRead, name, is_mpim: isIm, members } = group
+        const { id, is_open: isOpen, is_mpim: isMpim, last_read: lastRead, name, members } = group
 
         if (isOpen) {
 
@@ -182,17 +376,19 @@ function _handleAuthenticated(context, rtm, token, event) {
             let groupName = name
             let groupMembers = undefined
 
-            if (isIm) {
+            if (isMpim) {
                 groupName = _makeGroupName(members, users)
                 groupMembers = members
             }
 
             conversations[id] = {
+                id,
+                isIm: false,
+                isMpim,
                 lastMessage: undefined,
                 lastRead,
                 name: groupName,
-                unreadCount: 0,
-                loading: false
+                unreadCount: 0
             }
 
             if (!_.isUndefined(groupMembers)) {
@@ -208,12 +404,14 @@ function _handleAuthenticated(context, rtm, token, event) {
             const name = users[userId].displayName
 
             conversations[id] = {
+                id,
+                isIm: true,
+                isMpim: false,
                 lastMessage: undefined,
                 lastRead,
                 name,
                 unreadCount: 0,
-                userId,
-                loading: false
+                userId
             }
         }
     })
@@ -222,6 +420,7 @@ function _handleAuthenticated(context, rtm, token, event) {
         name: teamName,
         token,
         rtm,
+        authenticationEvent: event,
         users,
         conversations,
         unread: {},
@@ -289,8 +488,7 @@ function _handleMessage(context, teamId, event) {
         lastMessage,
         lastRead: 0,
         name: channelId,
-        unreadCount: (rollback) ? 0 : 1,
-        loading: false
+        unreadCount: (rollback) ? 0 : 1
     }
 
     const conversation = team.conversations[channelId]
@@ -402,8 +600,7 @@ function _handleJoined(context, teamId, event) {
         lastMessage,
         lastRead,
         name,
-        unreadCount: 0,
-        loading: false
+        unreadCount: 0
     }
 
     _processUnread(context, teamId)
@@ -457,21 +654,19 @@ function _getUserInfo(context, teamId, userId) {
                 teams[teamId].conversations[channelId].name = channelName
             }
         })
+
+        _refreshUI(context, teamId)
     })
 }
 
 function _getConversationInfo(context, teamId, channelId) {
     const team = teams[teamId]
 
-    teams[teamId].conversations[teamId].loading = true
-
     team.rtm.webClient.conversations.info({
         channel: channelId
     })
     .then(({ channel }) => {
         const { id: channelId, name, user: userId } = channel
-
-        teams[teamId].conversations[channelId].loading = false
 
         if (channel.is_im) {
 
@@ -490,6 +685,8 @@ function _getConversationInfo(context, teamId, channelId) {
                 _getUserInfo(context, teamId, userId)
             } else {
                 teams[teamId].conversations[channelId].name = team.users[userId].displayName
+
+                _refreshUI(context, teamId)
             }
         } else if (channel.is_mpim) {
 
@@ -503,6 +700,13 @@ function _getConversationInfo(context, teamId, channelId) {
             _getConversationMembers(context, teamId, channelId)
         } else {
             teams[teamId].conversations[channelId].name = name
+
+            /*
+             * Now that we have a team name, we should update the UI.
+             *
+             */
+
+            _refreshUI(context, teamId)
         }
     })
 }
@@ -519,6 +723,8 @@ function _getConversationMembers(context, teamId, channelId) {
 
         teams[teamId].conversations[channelId].name = groupName
         teams[teamId].conversations[channelId].members = members
+
+        _refreshUI(context, teamId)
     })
 }
 
@@ -645,13 +851,20 @@ function _processTyping(context, teamId, channelId) {
     const currentlyTyping = Object.keys(typing).map((id) => typing[id].name).join(' | ')
     const changed = !_.isEqual(teams[teamId].typing, typing)
 
-    context.logger(`[_processTyping] ${teamName}: previous=`, previouslyTyping, ', current=', currentlyTyping, ', changed=', changed)
+    if (changed || channelId) {
+        context.logger(`[_processTyping] ${teamName}: previous=`, previouslyTyping, ', current=', currentlyTyping, ', changed=', changed)
+    }
 
     if (changed) {
         teams[teamId].typing = typing
 
         _sendTeamUpdate(context, teamId)
     }
+}
+
+function _refreshUI(context, teamId) {
+    _processUnread(context, teamId)
+    _processTyping(context, teamId, undefined)
 }
 
 function _sendTeamUpdate(context, teamId) {

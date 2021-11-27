@@ -19,7 +19,7 @@ import log from 'electron-log'
 
 import MenuBuilder from './menu'
 import context from './context'
-import { rtmConnect } from './slack'
+import { rtmConnect, executeTest } from './slack'
 import { resolveHtmlPath } from './util'
 
 export default class AppUpdater {
@@ -39,6 +39,12 @@ ipcMain.on('rtmConnect', async (event, token) => {
     rtmConnect(context, token)
 
     event.reply('rtmConnect', token)
+})
+
+ipcMain.on('test', async (event, teamId, testType) => {
+    context.logger(`[test] teamId=${teamId}, testType=${testType}`)
+
+    executeTest(context, teamId, testType)
 })
 
 if (process.env.NODE_ENV === 'production') {

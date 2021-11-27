@@ -86,7 +86,7 @@ export default function Teams() {
                     bottom: "1em"
                 }
             }>
-                <Link to="/">Home</Link>
+                <Link to="/">Home</Link> | <Link to="/tests">Tests</Link>
             </div>
         </Segment>
     )
