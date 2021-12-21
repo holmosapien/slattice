@@ -21,10 +21,10 @@ export default function SlackBridge(props) {
             dispatch(handleAuthenticated(token, event))
         })
 
-        window.electron.ipcRenderer.on('teamUpdate', ({ teamId, name, unread, typing }) => {
+        window.electron.ipcRenderer.on('teamUpdate', ({ teamId, name, token, unread, typing }) => {
             console.log(`[teamUpdate]: teamId=${teamId}, name=${name}, unread=`, unread, ', typing=', typing)
 
-            dispatch(handleTeamUpdate(teamId, name, unread, typing))
+            dispatch(handleTeamUpdate(teamId, name, token, unread, typing))
         })
     }, [])
 

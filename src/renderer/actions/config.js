@@ -8,7 +8,7 @@ export function loadConfig() {
         dispatch(requestConfig())
 
         let config = {
-            'tokens': []
+            tokens: []
         }
 
         const tokensStr = window.localStorage.getItem('tokens')

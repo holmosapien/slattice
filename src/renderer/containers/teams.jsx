@@ -5,11 +5,13 @@ import { Divider, Form, List, Message, Segment } from 'semantic-ui-react'
 import _ from 'lodash'
 
 import { saveConfig } from 'renderer/actions/config'
-import { addTeam } from 'renderer/actions/slack'
+import { addTeam, cleanTokens, deleteTeam } from 'renderer/actions/slack'
 
 function TeamList({ teams }) {
-    const onRemoveTeam = () => {
-        return
+    const dispatch = useDispatch()
+
+    const onRemoveTeam = (teamId) => {
+        dispatch(deleteTeam(teamId))
     }
 
     return (
@@ -21,7 +23,7 @@ function TeamList({ teams }) {
                     return (
                         <List.Item key={teamId}>
                             <span style={{ color: "#687b8b" }}>{teams[teamId].name}</span>
-                            <a style={{ color: "#ff7b8b", float: "right" }} onClick={onRemoveTeam}>Remove</a>
+                            <a style={{ color: "#ff7b8b", float: "right" }} onClick={() => onRemoveTeam(teamId)}>Remove</a>
                         </List.Item>
                     )
                 })

@@ -41,6 +41,10 @@ function Team(props) {
         setUnreadConversations(Object.values(unreadChannelMap))
     }, [unread, typing])
 
+    const onRefreshConversation = (conversationId) => {
+        window.electron.ipcRenderer.refreshConversation(teamId, conversationId)
+    }
+
     return (
         <List>
             <List.Header>
@@ -49,11 +53,13 @@ function Team(props) {
             {
                 (unreadConversations.length > 0)
                     ? _.sortBy(unreadConversations, (conversation) => { return conversation.name }).map((conversation) => {
-                        const key = `team-${teamId}-conversation-${conversation.id}`
+                        const { id: conversationId, name: conversationName, unreadCount } = conversation
+
+                        const key = `team-${teamId}-conversation-${conversationId}`
 
                         return (
                             <List.Item key={key}>
-                                <span style={{ "color": "#687b8b" }}>{conversation.name}</span>
+                                <a style={{ color: "#687b8b" }} onClick={() => onRefreshConversation(conversationId)}>{conversationName}</a>
                                 {
                                     (conversation.unreadCount > 0) && (
                                         <span style={
@@ -63,12 +69,12 @@ function Team(props) {
                                                 fontSize: "0.8em"
                                             }
                                         }>
-                                            {conversation.unreadCount}
+                                            {unreadCount}
                                         </span>
                                     )
                                 }
                                 {
-                                    (!_.isUndefined(typing[conversation.id])) && (
+                                    (!_.isUndefined(typing[conversationId])) && (
                                         <span style={
                                             {
                                                 marginLeft: "1em",

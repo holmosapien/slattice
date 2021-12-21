@@ -19,7 +19,7 @@ import log from 'electron-log'
 
 import MenuBuilder from './menu'
 import context from './context'
-import { rtmConnect, executeTest } from './slack'
+import { rtmConnect, refreshConversation, executeTest, deleteTeam } from './slack'
 import { resolveHtmlPath } from './util'
 
 export default class AppUpdater {
@@ -41,10 +41,20 @@ ipcMain.on('rtmConnect', async (event, token) => {
     event.reply('rtmConnect', token)
 })
 
+ipcMain.on('refreshConversation', async (event, teamId, conversationId) => {
+    context.logger(`[refreshConversation] teamId=${teamId}}, conversationId=${conversationId}`)
+
+    refreshConversation(context, teamId, conversationId)
+})
+
 ipcMain.on('test', async (event, teamId, testType) => {
     context.logger(`[test] teamId=${teamId}, testType=${testType}`)
 
     executeTest(context, teamId, testType)
+})
+
+ipcMain.on('deleteTeam', async (event, teamId) => {
+    deleteTeam(context, teamId)
 })
 
 if (process.env.NODE_ENV === 'production') {
@@ -87,8 +97,8 @@ const createWindow = async () => {
 
     mainWindow = new BrowserWindow({
         show: false,
-        width: 1024,
-        height: 728,
+        width: 300,
+        height: 600,
         icon: getAssetPath('icon.png'),
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),

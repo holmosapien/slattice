@@ -135,6 +135,23 @@ export function rtmConnect(context, token) {
     return rtm
 }
 
+export function refreshConversation(context, teamId, conversationId) {
+    const team = teams[teamId]
+
+    if (!_.isUndefined(team)) {
+        const teamName = team.name
+        const conversation = team.conversations[conversationId]
+
+        if (!_.isUndefined(conversation)) {
+            const { name, lastRead } = conversation
+
+            context.logger(`${teamName}: fetching history for conversation ${name}`)
+
+            _getConversationHistory(context, teamId, conversationId, lastRead)
+        }
+    }
+}
+
 export function executeTest(context, teamId, testType) {
     let channelId = undefined
     let destination = 'message'
@@ -324,6 +341,18 @@ export function executeTest(context, teamId, testType) {
     }
 }
 
+export function deleteTeam(context, teamId) {
+    if (_.isUndefined(teams[teamId])) {
+        context.logger(`[deleteTeam] Could not find team ${teamId}`)
+    } else {
+        context.logger(`[deleteTeam] Disconnecting team ${teamId}`)
+
+        teams[teamId].rtm.disconnect()
+
+        delete teams[teamId]
+    }
+}
+
 function _handleAuthenticated(context, rtm, token, event) {
     const { id: teamId, name: teamName } = event.team
 
@@ -444,6 +473,8 @@ function _handleMessage(context, teamId, event) {
     const team = teams[teamId]
 
     if (_.isUndefined(team)) {
+        context.logger(`[_handleMessage] Received message for unknown team ${teamId}: `, event)
+
         return
     }
 
@@ -474,6 +505,19 @@ function _handleMessage(context, teamId, event) {
             } else {
                 lastMessage = "0"
             }
+        }
+
+        /*
+         * If the channel has been archived, remove it from our cache.
+         *
+         */
+
+        if ((subtype == 'channel_archive') && (!_.isUndefined(team.conversations[channelId]))) {
+            delete teams[teamId].conversations[channelId]
+
+            _processUnread(context, teamId)
+
+            return
         }
     }
 
@@ -657,6 +701,9 @@ function _getUserInfo(context, teamId, userId) {
 
         _refreshUI(context, teamId)
     })
+    .catch((error) => {
+        context.logger(`[_getUserInfo] Failed to fetch details for user ${userId} in team ${teamId}: `, error)
+    })
 }
 
 function _getConversationInfo(context, teamId, channelId) {
@@ -666,16 +713,26 @@ function _getConversationInfo(context, teamId, channelId) {
         channel: channelId
     })
     .then(({ channel }) => {
-        const { id: channelId, name, user: userId } = channel
+        const { id: channelId, name, is_im: isIm, is_mpim: isMpim, last_read: lastRead, user: userId } = channel
 
-        if (channel.is_im) {
+        if (_.isUndefined(teams[teamId].conversations[channelId])) {
+            teams[teamId].conversations[channelId] = {
+                id: channelId,
+                isIm: isIm,
+                isMpim: isMpim,
+                lastMessage: undefined,
+                lastRead,
+                name,
+                unreadCount: 0
+            }
+        }
+
+        if (isIm) {
 
             /*
              * If this is an IM, pull the user information if we don't already know who it is.
              *
              */
-
-            const userId = channel.user
 
             teams[teamId].conversations[channelId].userId = userId
 
@@ -709,6 +766,9 @@ function _getConversationInfo(context, teamId, channelId) {
             _refreshUI(context, teamId)
         }
     })
+    .catch((error) => {
+        context.logger(`[_getConversationInfo] Failed to fetch details for conversation ${channelId} in team ${teamId}: `, error)
+    })
 }
 
 function _getConversationMembers(context, teamId, channelId) {
@@ -725,6 +785,9 @@ function _getConversationMembers(context, teamId, channelId) {
         teams[teamId].conversations[channelId].members = members
 
         _refreshUI(context, teamId)
+    })
+    .catch((error) => {
+        context.logger(`[_getConversationMembers] Failed to fetch members for conversation ${channelId} in team ${teamId}: `, error)
     })
 }
 
@@ -759,6 +822,9 @@ function _getConversationHistory(context, teamId, channelId, ts) {
         teams[teamId].conversations[channelId].unreadCount = messages.length
 
         _processUnread(context, teamId)
+    })
+    .catch((error) => {
+        context.logger(`[_getConversationHistory] Failed to fetch history for channel ${channelId} in team ${teamId}: `, error)
     })
 }
 
@@ -821,7 +887,7 @@ function _processTyping(context, teamId, channelId) {
     let typing = {}
 
     Object.keys(teams[teamId].typing).forEach((id) => {
-        const { name, ts } = teams[teamId].typing[id]
+        const ts = teams[teamId].typing[id].ts
 
         if (ts < now - 10) {
             return
@@ -829,6 +895,19 @@ function _processTyping(context, teamId, channelId) {
 
         if (channelId && (id == channelId)) {
             return
+        }
+
+        /*
+         * Make sure the name for the channel is correct.
+         *
+         */
+
+        let name = teams[teamId].typing[id].name
+
+        const conversation = teams[teamId].conversations[id]
+
+        if (!_.isUndefined(conversation)) {
+            name = conversation.name
         }
 
         typing[id] = { name, ts }
@@ -841,7 +920,14 @@ function _processTyping(context, teamId, channelId) {
 
     if (channelId) {
         const conversation = teams[teamId].conversations[channelId]
-        const name = (_.isUndefined(conversation)) ? '-' : conversation.name
+
+        let name = '-'
+
+        if (_.isUndefined(conversation)) {
+            _getConversationInfo(context, teamId, channelId)
+        } else {
+            name = conversation.name
+        }
 
         typing[channelId] = { name, ts: now }
     }
@@ -868,9 +954,9 @@ function _refreshUI(context, teamId) {
 }
 
 function _sendTeamUpdate(context, teamId) {
-    const { name, unread, typing } = teams[teamId]
+    const { name, token, unread, typing } = teams[teamId]
 
-    const update = { teamId, name, unread, typing }
+    const update = { teamId, name, token, unread, typing }
 
     context.logger('[_sendTeamUpdate] sending update: ', update)
 

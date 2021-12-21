@@ -10,7 +10,9 @@ import {
     ADD_TEAM,
     REQUEST_CONNECTION,
     TOKEN_AUTHENTICATED,
-    TEAM_UPDATE
+    TEAM_UPDATE,
+    CLEAN_TOKENS,
+    DELETE_TEAM
 } from '../actions/slack'
 
 const defaultSlackState = {
@@ -87,19 +89,68 @@ export default function slack(state = defaultSlackState, action) {
             return state
         case TEAM_UPDATE:
         {
-            const { teamId, name, unread, typing } = action
+            const { teamId, token, name, unread, typing } = action
 
             return update(state, {
                 teams: {
                     [teamId]: {
                         $set: {
                             name,
+                            token,
                             unread,
                             typing
                         }
                     }
                 }
             })
+        }
+        case CLEAN_TOKENS:
+        {
+
+            /*
+             * Filter bad tokens.
+             *
+             */
+
+            const badTokens = Object.keys(state.tokens).filter((token) => {
+                if (state.tokens[token].connected) {
+                    const teamId = Object.keys(state.teams).find((teamId) => state.teams[teamId].token == token)
+
+                    if (_.isUndefined(teamId)) {
+                        return true
+                    }
+                }
+
+                return false
+            })
+
+            if (badTokens.length > 0) {
+                console.log("removing tokens ", badTokens, " from config")
+
+                return update(state, {
+                    tokens: {
+                        $unset: badTokens
+                    }
+                })
+            }
+        }
+        case DELETE_TEAM:
+        {
+            const { teamId, token } = action
+
+            let u = {
+                teams: {
+                    $unset: [ teamId ]
+                }
+            }
+
+            if (!_.isUndefined(token)) {
+                u.tokens = {
+                    $unset: [ token ]
+                }
+            }
+
+            return update(state, u)
         }
         default:
             return state
