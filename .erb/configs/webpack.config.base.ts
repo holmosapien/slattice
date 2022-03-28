@@ -5,9 +5,8 @@
 import webpack from 'webpack';
 import webpackPaths from './webpack.paths';
 import { dependencies as externals } from '../../release/app/package.json';
-import { ProvidePlugin } from 'webpack';
 
-export default {
+const configuration: webpack.Configuration = {
   externals: [...Object.keys(externals || {})],
 
   stats: 'errors-only',
@@ -50,3 +49,5 @@ export default {
     }),
   ],
 };
+
+export default configuration;
