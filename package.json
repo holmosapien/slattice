@@ -103,8 +103,7 @@
         "email": "nobody@holmosapien.com",
         "url": "https://holmosapien.com"
     },
-    "contributors": [
-    ],
+    "contributors": [],
     "license": "MIT",
     "bugs": {
         "url": "https://github.com/holmosapien/slattice/issues"
@@ -219,8 +218,8 @@
     },
     "dependencies": {
         "@slack/events-api": "^3.0.1",
-        "@slack/web-api": "^6.5.1",
         "@slack/rtm-api": "^6.0.0",
+        "@slack/web-api": "^6.5.1",
         "connected-react-router": "^6.9.1",
         "electron-debug": "^3.2.0",
         "electron-log": "^4.4.6",

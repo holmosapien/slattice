@@ -19,6 +19,7 @@ import log from 'electron-log'
 
 import MenuBuilder from './menu'
 import context from './context'
+import model from './model'
 import { rtmConnect, refreshConversation, executeTest, deleteTeam } from './slack'
 import { resolveHtmlPath } from './util'
 
@@ -106,6 +107,12 @@ const createWindow = async () => {
     })
 
     context.setWindow(mainWindow)
+    context.setModel(model)
+
+    const userPath = app.getPath('userData')
+
+    model.initializeModel(context, userPath)
+    model.createTables()
 
     mainWindow.loadURL(resolveHtmlPath('index.html'))
 

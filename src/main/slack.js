@@ -21,35 +21,14 @@ export function rtmConnect(context, token) {
         return teams[teamId].rtm
     }
 
-    const rtm = new RTMClient(token, { useRtmConnect: false })
+    const rtm = new RTMClient(token, { useRtmConnect: true })
 
     rtm.on('authenticated', (event) => {
         context.logger('AUTHENTICATED: ', event)
 
         context.window.webContents.send('slackAuthenticated', { token, event })
 
-        const teamId = event.team.id
-        const team = _handleAuthenticated(context, rtm, token, event)
-        const teamName = teams[teamId].name
-
-        /*
-         * The data returned after authentication gives us the channels, IMs, and groups
-         * with the last-read timestamps, but it doesn't tell us the last message timestamp
-         * or how many messages are unread. For that we have to loop through each channel,
-         * group, and IM and fetch the details one-by-one.
-         *
-         * To reduce the load on the API, we only fetch channel data for channels for which
-         * we are members.
-         *
-         */
-
-        Object.keys(team.conversations).forEach((channelId) => {
-            const { name, lastRead } = team.conversations[channelId]
-
-            context.logger(`${teamName}: fetching history for conversation ${name}`)
-
-            _getConversationHistory(context, teamId, channelId, lastRead)
-        })
+        _handleAuthenticated(context, rtm, token, event)
     })
 
     rtm.on('ready', () => {
@@ -143,11 +122,11 @@ export function refreshConversation(context, teamId, conversationId) {
         const conversation = team.conversations[conversationId]
 
         if (!_.isUndefined(conversation)) {
-            const { name, lastRead } = conversation
+            const { name } = conversation
 
-            context.logger(`${teamName}: fetching history for conversation ${name}`)
+            context.logger(`[refreshConversation] ${teamName}: fetching history for conversation ${name}`)
 
-            _getConversationHistory(context, teamId, conversationId, lastRead)
+            _getConversationInfo(context, teamId, conversationId)
         }
     }
 }
@@ -356,107 +335,26 @@ export function deleteTeam(context, teamId) {
 function _handleAuthenticated(context, rtm, token, event) {
     const { id: teamId, name: teamName } = event.team
 
-    let users = {}
-
-    event.users.forEach((user) => {
-        const { deleted, id, name, real_name: realName } = user
-
-        if (deleted == false) {
-            const displayName = realName || name
-
-            users[id] = {
-                id,
-                displayName,
-                name,
-                realName,
-                unreadCount: 0
-            }
-        }
-    })
-
-    let conversations = {}
-
-    event.channels.forEach((channel) => {
-        const { id, is_member: isMember, is_open: isOpen, is_mpim: isIm, last_read: lastRead, name } = channel
-
-        if (isMember && (!isIm || (isIm && isOpen))) {
-            conversations[id] = {
-                id,
-                isIm: false,
-                isMpim: false,
-                lastMessage: undefined,
-                lastRead,
-                name,
-                unreadCount: 0
-            }
-        }
-    })
-
-    event.groups.forEach((group) => {
-        const { id, is_open: isOpen, is_mpim: isMpim, last_read: lastRead, name, members } = group
-
-        if (isOpen) {
-
-            /*
-             * If this is a multi-person IM group, then we should make the name the concatenation of the group members.
-             *
-             */
-
-            let groupName = name
-            let groupMembers = undefined
-
-            if (isMpim) {
-                groupName = _makeGroupName(members, users)
-                groupMembers = members
-            }
-
-            conversations[id] = {
-                id,
-                isIm: false,
-                isMpim,
-                lastMessage: undefined,
-                lastRead,
-                name: groupName,
-                unreadCount: 0
-            }
-
-            if (!_.isUndefined(groupMembers)) {
-                conversations[id].members = groupMembers
-            }
-        }
-    })
-
-    event.ims.forEach((im) => {
-        const { id, is_open: isOpen, last_read: lastRead, user: userId } = im
-
-        if (isOpen && users[userId]) {
-            const name = users[userId].displayName
-
-            conversations[id] = {
-                id,
-                isIm: true,
-                isMpim: false,
-                lastMessage: undefined,
-                lastRead,
-                name,
-                unreadCount: 0,
-                userId
-            }
-        }
-    })
-
     const team = {
         name: teamName,
         token,
         rtm,
         authenticationEvent: event,
-        users,
-        conversations,
+        users: {},
+        conversations: {},
+        status: {
+            usersLoaded: false,
+            conversationsLoaded: false,
+            ready: false
+        },
         unread: {},
         typing: {}
     }
 
     teams[teamId] = team
+
+    _loadUsers(context, teamId)
+    _loadConversations(context, teamId)
 
     _sendTeamUpdate(context, teamId)
 
@@ -650,6 +548,112 @@ function _handleJoined(context, teamId, event) {
     _processUnread(context, teamId)
 }
 
+async function _loadUsers(context, teamId) {
+    for await (const page of teams[teamId].rtm.webClient.paginate('users.list')) {
+        page.members.forEach((user) => {
+            const { deleted, id, name, real_name: realName } = user
+
+            if (deleted == false) {
+                const displayName = realName || name
+
+                teams[teamId].users[id] = {
+                    id,
+                    displayName,
+                    name,
+                    realName,
+                    unreadCount: 0
+                }
+            }
+        })
+    }
+}
+
+async function _loadConversations(context, teamId) {
+    const team = teams[teamId]
+    const teamName = team.name
+
+    const conversationTypes = 'public_channel,private_channel,mpim,im'
+
+    const pages = teams[teamId].rtm.webClient.paginate('conversations.list', {
+        types: conversationTypes,
+        exclude_archived: true
+    })
+
+    for await (const page of pages) {
+        page.channels.forEach((channel) => {
+            const {
+                id: conversationId,
+                is_member: isMember,
+                is_channel: isChannel,
+                is_group: isGroup,
+                is_im: isIm,
+                is_mpim: isMpim,
+                is_archived: isArchived,
+                is_user_deleted: isDeleted,
+                name
+            } = channel
+
+            /*
+             * This isn't always defined. We'll assume if it's not in the results,
+             * the answer is "true".
+             *
+             */
+
+            const isOpen = (_.isUndefined(channel.is_open)) ? true : channel.is_open
+
+            let conversation = {
+                id: conversationId,
+                isMember,
+                isOpen,
+                isChannel,
+                isGroup,
+                isIm,
+                isMpim,
+                isArchived,
+                isDeleted,
+                lastMessage: undefined,
+                lastRead: undefined,
+                name,
+                unreadCount: 0
+            }
+
+            if (isIm) {
+                conversation.name = channel.user
+                conversation.userId = channel.user
+            }
+
+            teams[teamId].conversations[conversationId] = conversation
+
+            /*
+             * The data returned from the API gives us the channels, groups, IMs, and MPIMs,
+             * but it doesn't tell us the last-read timestamps, last message timestamp, or how
+             * many messages are unread. For that we have to loop through each channel, group,
+             * and IM and fetch the details one-by-one.
+             *
+             * To reduce the load on the API, we only fetch channel data for channels for which
+             * we are members.
+             *
+             */
+
+            if ((isChannel && !isGroup && !isMpim && isMember) ||
+                (isGroup && isMember && isOpen) ||
+                (isMpim && isMember && isOpen) ||
+                (isIm && isOpen && !isDeleted))
+            {
+                context.model.getConversation(teamId, conversationId, function(err, row) {
+                    context.logger(`[_loadConversations] ${teamName}: fetching details for conversation ${conversation.name}: `, channel)
+
+                    const fetchAllHistory = (row) ? false : true
+
+                    _getConversationInfo(context, teamId, conversationId, fetchAllHistory)
+                })
+            } else {
+                context.logger(`[_loadConversations] Skipping conversation ${conversationId} (${conversation.name}): `, channel)
+            }
+        })
+    }
+}
+
 function _getUserInfo(context, teamId, userId) {
     const team = teams[teamId]
 
@@ -706,25 +710,48 @@ function _getUserInfo(context, teamId, userId) {
     })
 }
 
-function _getConversationInfo(context, teamId, channelId) {
+function _getConversationInfo(context, teamId, channelId, fetchAllHistory = false) {
     const team = teams[teamId]
 
     team.rtm.webClient.conversations.info({
         channel: channelId
     })
     .then(({ channel }) => {
-        const { id: channelId, name, is_im: isIm, is_mpim: isMpim, last_read: lastRead, user: userId } = channel
+        const {
+            id: channelId,
+            name,
+            is_member: isMember,
+            is_open: isOpen,
+            is_channel: isChannel,
+            is_group: isGroup,
+            is_im: isIm,
+            is_mpim: isMpim,
+            is_archived: isArchived,
+            is_user_deleted: isDeleted,
+            last_read: lastRead,
+            user: userId
+        } = channel
+
+        context.logger(`[_getConversationInfo] Processing channel `, channel)
 
         if (_.isUndefined(teams[teamId].conversations[channelId])) {
             teams[teamId].conversations[channelId] = {
                 id: channelId,
-                isIm: isIm,
-                isMpim: isMpim,
+                isMember,
+                isOpen,
+                isChannel,
+                isGroup,
+                isIm,
+                isMpim,
+                isArchived,
+                isDeleted,
                 lastMessage: undefined,
                 lastRead,
                 name,
                 unreadCount: 0
             }
+        } else {
+            teams[teamId].conversations[channelId].lastRead = lastRead
         }
 
         if (isIm) {
@@ -745,7 +772,7 @@ function _getConversationInfo(context, teamId, channelId) {
 
                 _refreshUI(context, teamId)
             }
-        } else if (channel.is_mpim) {
+        } else if (isMpim) {
 
             /*
              * If this is an MPIM, pull the group membership.
@@ -765,6 +792,10 @@ function _getConversationInfo(context, teamId, channelId) {
 
             _refreshUI(context, teamId)
         }
+
+        const ts = (fetchAllHistory) ? undefined : lastRead
+
+        _getConversationHistory(context, teamId, channelId, ts)
     })
     .catch((error) => {
         context.logger(`[_getConversationInfo] Failed to fetch details for conversation ${channelId} in team ${teamId}: `, error)
@@ -800,10 +831,13 @@ function _getConversationHistory(context, teamId, channelId, ts) {
 
     if (ts && (Number(ts) > 0)) {
         request.oldest = ts
+        request.inclusive = true
     }
 
     team.rtm.webClient.conversations.history(request)
     .then((conversation) => {
+        context.logger(`[_getConversationHistory] History for channel ${channelId} in team ${teamId}: `, request, conversation)
+
         const messages = conversation.messages
 
         let newestNum = 0
@@ -821,11 +855,36 @@ function _getConversationHistory(context, teamId, channelId, ts) {
         teams[teamId].conversations[channelId].lastMessage = newestStr
         teams[teamId].conversations[channelId].unreadCount = messages.length
 
+        /*
+         * Persist the conversation details to the model.
+         *
+         */
+
+        const conversationType = _getConversationType(teams[teamId].conversations[channelId])
+
+        context.model.updateConversation(teamId, channelId, conversationType, newestStr)
+
         _processUnread(context, teamId)
     })
     .catch((error) => {
         context.logger(`[_getConversationHistory] Failed to fetch history for channel ${channelId} in team ${teamId}: `, error)
     })
+}
+
+function _getConversationType(conversation) {
+    const {
+        isChannel,
+        isGroup,
+        isIm,
+        isMpim
+    } = conversation
+
+    if (isMpim) return "MPIM"
+    if (isIm) return "IM"
+    if (isGroup) return "GROUP"
+    if (isChannel) return "CHANNEL"
+
+    return "UNKNOWN"
 }
 
 function _makeGroupName(members, users) {
