@@ -751,6 +751,9 @@ function _getConversationInfo(context, teamId, channelId, fetchAllHistory = fals
                 unreadCount: 0
             }
         } else {
+            teams[teamId].conversations[channelId].isOpen = isOpen
+            teams[teamId].conversations[channelId].isArchived = isArchived
+            teams[teamId].conversations[channelId].isDeleted = isDeleted
             teams[teamId].conversations[channelId].lastRead = lastRead
         }
 
@@ -793,9 +796,7 @@ function _getConversationInfo(context, teamId, channelId, fetchAllHistory = fals
             _refreshUI(context, teamId)
         }
 
-        const ts = (fetchAllHistory) ? undefined : lastRead
-
-        _getConversationHistory(context, teamId, channelId, ts)
+        _getConversationHistory(context, teamId, channelId, lastRead, fetchAllHistory)
     })
     .catch((error) => {
         context.logger(`[_getConversationInfo] Failed to fetch details for conversation ${channelId} in team ${teamId}: `, error)
@@ -822,14 +823,14 @@ function _getConversationMembers(context, teamId, channelId) {
     })
 }
 
-function _getConversationHistory(context, teamId, channelId, ts) {
+function _getConversationHistory(context, teamId, channelId, ts, fetchAllHistory = false) {
     const team = teams[teamId]
 
     let request = {
         channel: channelId
     }
 
-    if (ts && (Number(ts) > 0)) {
+    if (ts && (Number(ts) > 0) && !fetchAllHistory) {
         request.oldest = ts
         request.inclusive = true
     }
@@ -842,27 +843,37 @@ function _getConversationHistory(context, teamId, channelId, ts) {
 
         let newestNum = 0
         let newestStr = undefined
+        let unreadCount = 0
 
         messages.forEach((message) => {
-            const ts = Number(message.ts)
+            const messageTimestamp = Number(message.ts)
 
-            if (ts > newestNum) {
-                newestNum = ts
+            if (messageTimestamp > newestNum) {
+                newestNum = messageTimestamp
                 newestStr = message.ts
+            }
+
+            if (ts && Number(ts)) {
+                if (messageTimestamp > Number(ts)) {
+                    unreadCount += 1
+                }
+            } else {
+                unreadCount += 1
             }
         })
 
         teams[teamId].conversations[channelId].lastMessage = newestStr
-        teams[teamId].conversations[channelId].unreadCount = messages.length
+        teams[teamId].conversations[channelId].unreadCount = unreadCount
 
         /*
          * Persist the conversation details to the model.
          *
          */
 
+        const conversationName = teams[teamId].conversations[channelId].name
         const conversationType = _getConversationType(teams[teamId].conversations[channelId])
 
-        context.model.updateConversation(teamId, channelId, conversationType, newestStr)
+        context.model.updateConversation(teamId, channelId, conversationName, conversationType, newestStr)
 
         _processUnread(context, teamId)
     })

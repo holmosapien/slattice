@@ -19,6 +19,7 @@ export default {
             CREATE TABLE IF NOT EXISTS conversations (
                 team_id TEXT,
                 conversation_id TEXT,
+                conversation_name TEXT,
                 conversation_type TEXT,
                 last_message REAL,
                 last_update REAL,
@@ -34,6 +35,7 @@ export default {
             SELECT
                 team_id,
                 conversation_id,
+                conversation_name,
                 conversation_type,
                 last_message,
                 last_update
@@ -47,13 +49,14 @@ export default {
         this.dbh.get(query, [teamId, conversationId], callback)
     },
 
-    updateConversation: function(teamId, conversationId, conversationType, lastMessage) {
+    updateConversation: function(teamId, conversationId, conversationName, conversationType, lastMessage) {
         const query = `
             INSERT INTO
                 conversations
             (
                 team_id,
                 conversation_id,
+                conversation_name,
                 conversation_type,
                 last_message,
                 last_update
@@ -62,13 +65,21 @@ export default {
                 ?,
                 ?,
                 ?,
-                DATE()
+                ?,
+                DATETIME()
             )
             ON CONFLICT (team_id, conversation_id) DO UPDATE SET
                 last_message = ?,
-                last_update = DATE()
+                last_update = DATETIME()
         `
 
-        this.dbh.run(query, [teamId, conversationId, conversationType, lastMessage, lastMessage])
+        this.dbh.run(query, [
+            teamId,
+            conversationId,
+            conversationName,
+            conversationType,
+            lastMessage,
+            lastMessage
+        ])
     }
 }
