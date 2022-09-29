@@ -640,15 +640,50 @@ async function _loadConversations(context, teamId) {
                 (isMpim && isMember && isOpen) ||
                 (isIm && isOpen && !isDeleted))
             {
+
+                /*
+                 * The `conversations.list` API does not return the open status
+                 * for MPIMs. Since people in busy Slack teams can have hundreds
+                 * of historical MPIMs and tie up the initialization process for
+                 * minutes, let's skip fetching MPIM statuses if the last message
+                 * was more than a month ago.
+                 *
+                 */
+
                 context.model.getConversation(teamId, conversationId, function(err, row) {
-                    context.logger(`[_loadConversations] ${teamName}: fetching details for conversation ${conversation.name}: `, channel)
+                    let worthFetching = true
+                    let fetchAllHistory = true
 
-                    const fetchAllHistory = (row) ? false : true
+                    if (row) {
+                        worthFetching = false
+                        fetchAllHistory = false
 
-                    _getConversationInfo(context, teamId, conversationId, fetchAllHistory)
+                        if (row.last_message) {
+                            const oldDate = new Date(0)
+
+                            oldDate.setUTCSeconds(row.last_message)
+
+                            const now = new Date()
+                            const difference = (now - oldDate) / 1000 / 60 / 60 / 24
+
+                            context.logger(`[_loadConversations] oldDate=`, oldDate, `, now=`, now, `, difference=${difference}`)
+
+                            if (difference < 31) {
+                                worthFetching = true
+                            }
+                        }
+                    }
+
+                    if (worthFetching) {
+                        context.logger(`[_loadConversations] ${teamName}: Fetching details for conversation ${conversation.name}: `, channel)
+
+                        _getConversationInfo(context, teamId, conversationId, fetchAllHistory)
+                    } else {
+                        context.logger(`[_loadConversations] ${teamName}: Skipping stale conversation ${conversation.name}: `, channel)
+                    }
                 })
             } else {
-                context.logger(`[_loadConversations] Skipping conversation ${conversationId} (${conversation.name}): `, channel)
+                context.logger(`[_loadConversations] Skipping uninteresting conversation ${conversationId} (${conversation.name}): `, channel)
             }
         })
     }
