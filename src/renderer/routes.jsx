@@ -1,5 +1,5 @@
 import React from 'react'
-import { Switch, Route } from 'react-router'
+import { HashRouter as Router, Routes, Route } from 'react-router-dom'
 
 import App from 'renderer/containers/app'
 import Home from 'renderer/containers/home'
@@ -8,17 +8,20 @@ import Tests from 'renderer/containers/tests'
 
 const ROUTES = {
     home: "/",
-    teams: "/teams"
+    teams: "/teams",
+    tests: "/tests"
 }
 
 export default () => {
     return (
         <App>
-            <Switch>
-                <Route exact path={ROUTES.home} component={Home} />
-                <Route path={ROUTES.teams} component={Teams} />
-                <Route path={ROUTES.tests} component={Tests} />
-            </Switch>
+            <Router>
+                <Routes>
+                    <Route exact path={ROUTES.home} element={<Home />} />
+                    <Route path={ROUTES.teams} element={<Teams />} />
+                    <Route path={ROUTES.tests} element={<Tests />} />
+                </Routes>
+            </Router>
         </App>
     )
 }

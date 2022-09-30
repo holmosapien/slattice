@@ -1,21 +1,14 @@
-import { createStore, applyMiddleware } from 'redux'
+import { configureStore } from '@reduxjs/toolkit'
 import thunk from 'redux-thunk'
-
-import { createHashHistory } from 'history'
-import { routerMiddleware } from 'connected-react-router'
 
 import createRootReducer from '../reducers'
 
-export const history = createHashHistory()
+const rootReducer = createRootReducer()
 
-const rootReducer = createRootReducer(history)
-const router = routerMiddleware(history)
-const enhancer = applyMiddleware(thunk, router)
-
-export function configureStore(initialState) {
-    return createStore(
-        rootReducer,
-        initialState,
-        enhancer
-    )
+export function createStore(initialState) {
+    return configureStore({
+        middleware: [thunk],
+        reducer: rootReducer,
+        initialState
+    })
 }

@@ -1,9 +1,12 @@
-import { render } from 'react-dom'
+import React from 'react'
+import { createRoot } from 'react-dom/client'
 
 import Root from './containers/root'
 
-import { configureStore, history } from './store/configureStore'
+import { createStore } from './store/configureStore'
 
-const store = configureStore()
+const container = document.getElementById('root')!
+const root = createRoot(container)
+const store = createStore()
 
-render(<Root store={store} history={history} />, document.getElementById('root'))
+root.render(<Root store={store} />)
