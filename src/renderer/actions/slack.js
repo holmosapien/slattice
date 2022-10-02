@@ -5,6 +5,7 @@ export const REQUEST_CONNECTION  = 'REQUEST_CONNECTION'
 export const TOKEN_AUTHENTICATED = 'TOKEN_AUTHENTICATED'
 export const TEAM_UPDATE         = 'TEAM_UPDATE'
 export const CLEAN_TOKENS        = 'CLEAN_TOKENS'
+export const REFRESH_TEAM        = 'REFRESH_TEAM'
 export const DELETE_TEAM         = 'DELETE_TEAM'
 
 export function addTeam(token) {
@@ -57,6 +58,17 @@ export function handleTeamUpdate(teamId, name, token, unread, typing) {
 export function cleanTokens() {
     return {
         type: CLEAN_TOKENS
+    }
+}
+
+export function refreshTeam(teamId) {
+    return (dispatch, getState) => {
+        window.electron.ipcRenderer.refreshTeam(teamId)
+
+        dispatch({
+            type: REFRESH_TEAM,
+            teamId
+        })
     }
 }
 

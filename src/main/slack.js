@@ -362,7 +362,18 @@ function _handleAuthenticated(context, rtm, token, event) {
 }
 
 function _handlePong(context, teamId) {
-    _processTyping(context, teamId, undefined)
+    const updated = _processTyping(context, teamId, undefined)
+
+    /*
+     * Update the front-end upon pong even if nothing else has changed.
+     * This allows the front-end to detect whether our RTM session
+     * has died and needs to be refreshed.
+     *
+     */
+
+    if (!updated) {
+        _sendTeamUpdate(context, teamId)
+    }
 }
 
 function _handleMessage(context, teamId, event) {
@@ -1050,7 +1061,11 @@ function _processTyping(context, teamId, channelId) {
         teams[teamId].typing = typing
 
         _sendTeamUpdate(context, teamId)
+
+        return true
     }
+
+    return false
 }
 
 function _refreshUI(context, teamId) {

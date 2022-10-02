@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react'
-import { Label, List } from 'semantic-ui-react'
+import { useDispatch } from 'react-redux'
+import { Button, List, Popup, Segment, Table } from 'semantic-ui-react'
 import _ from 'lodash'
+import moment from 'moment'
 
-import { getConversationInfo } from 'renderer/actions/slack'
+import { refreshTeam } from 'renderer/actions/slack'
 
 function Team(props) {
     const { teamId, team: { name, unread, typing } } = props
@@ -48,7 +50,15 @@ function Team(props) {
     return (
         <List>
             <List.Header>
-                {name.toUpperCase()}
+                <Popup
+                    hoverable
+                    trigger={<span>{name.toUpperCase()}</span>}
+                    wide="very"
+                >
+                    <Popup.Content>
+                        <TeamMeta {...props} />
+                    </Popup.Content>
+                </Popup>
             </List.Header>
             {
                 (unreadConversations.length > 0)
@@ -93,6 +103,46 @@ function Team(props) {
                     </List.Item>
             }
         </List>
+    )
+}
+
+function TeamMeta(props) {
+    const { teamId, team: { name, unread, typing, lastUpdate } } = props
+
+    const dispatch = useDispatch()
+
+    const [dateDiff, setDateDiff] = useState("N/A")
+
+    useEffect(() => {
+        const dateDiff = moment(lastUpdate).fromNow()
+
+        setDateDiff(dateDiff)
+    }, [lastUpdate])
+
+    const onRefreshTeam = () => {
+        dispatch(refreshTeam(teamId))
+    }
+
+    return (
+        <Segment basic>
+            <Table celled>
+                <Table.Body>
+                    <Table.Row>
+                        <Table.Cell>Team ID</Table.Cell>
+                        <Table.Cell>{teamId}</Table.Cell>
+                    </Table.Row>
+                    <Table.Row>
+                        <Table.Cell>Name</Table.Cell>
+                        <Table.Cell>{name}</Table.Cell>
+                    </Table.Row>
+                    <Table.Row>
+                        <Table.Cell>Last Update</Table.Cell>
+                        <Table.Cell>{dateDiff}</Table.Cell>
+                    </Table.Row>
+                </Table.Body>
+            </Table>
+            <Button primary onClick={onRefreshTeam}>Refresh</Button>
+        </Segment>
     )
 }
 

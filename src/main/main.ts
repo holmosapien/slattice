@@ -9,9 +9,6 @@
  * `./src/main.js` using webpack. This gives us some performance wins.
  */
 
-import 'core-js/stable'
-import 'regenerator-runtime/runtime'
-
 import path from 'path'
 import { app, BrowserWindow, shell, ipcMain } from 'electron'
 import { autoUpdater } from 'electron-updater'
@@ -54,6 +51,10 @@ ipcMain.on('test', async (event, teamId, testType) => {
     executeTest(context, teamId, testType)
 })
 
+ipcMain.on('refreshTeam', async(event, teamId) => {
+    context.logger(`[refreshTeam] teamId=${teamId}`)
+})
+
 ipcMain.on('deleteTeam', async (event, teamId) => {
     deleteTeam(context, teamId)
 })
@@ -64,9 +65,9 @@ if (process.env.NODE_ENV === 'production') {
     sourceMapSupport.install()
 }
 
-const isDevelopment = process.env.NODE_ENV === 'development' || process.env.DEBUG_PROD === 'true'
+const isDebug = process.env.NODE_ENV === 'development' || process.env.DEBUG_PROD === 'true'
 
-if (isDevelopment) {
+if (isDebug) {
     require('electron-debug')()
 }
 
@@ -84,7 +85,7 @@ const installExtensions = async () => {
 }
 
 const createWindow = async () => {
-    if (isDevelopment) {
+    if (isDebug) {
         await installExtensions();
     }
 
@@ -102,7 +103,9 @@ const createWindow = async () => {
         height: 600,
         icon: getAssetPath('icon.png'),
         webPreferences: {
-            preload: path.join(__dirname, 'preload.js'),
+            preload: app.isPackaged
+                ? path.join(__dirname, 'preload.js')
+                : path.join(__dirname, '../../.erb/dll/preload.js')
         }
     })
 
@@ -126,7 +129,7 @@ const createWindow = async () => {
         } else {
             mainWindow.show()
         }
-    });
+    })
 
     mainWindow.on('closed', () => {
         mainWindow = null
@@ -137,10 +140,10 @@ const createWindow = async () => {
     menuBuilder.buildMenu()
 
     // Open urls in the user's browser
-    mainWindow.webContents.on('new-window', (event, url) => {
-        event.preventDefault()
-        shell.openExternal(url)
-    });
+    mainWindow.webContents.setWindowOpenHandler((edata) => {
+        shell.openExternal(edata.url)
+        return { action: 'deny' }
+    })
 
     // Remove this if your app does not use auto updates
     // eslint-disable-next-line

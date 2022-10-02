@@ -15,13 +15,18 @@ contextBridge.exposeInMainWorld('electron', {
 
             ipcRenderer.send('test', teamId, testType)
         },
+        refreshTeam(teamId) {
+            console.log(`[refreshTeam] sending request to refresh team ${teamId} to main process`)
+
+            ipcRenderer.send('refreshTeam', teamId)
+        },
         deleteTeam(teamId) {
             console.log(`[deleteTeam] sending request to delete team ${teamId} to main process`)
 
             ipcRenderer.send('deleteTeam', teamId)
         },
         on(channel, func) {
-            const validChannels = ['log', 'rtmConnect', 'slackAuthenticated', 'teamUpdate', 'deleteTeam'];
+            const validChannels = ['log', 'rtmConnect', 'slackAuthenticated', 'teamUpdate', 'deleteTeam']
 
             if (validChannels.includes(channel)) {
                 // Deliberately strip event as it includes `sender`
@@ -29,7 +34,7 @@ contextBridge.exposeInMainWorld('electron', {
             }
         },
         once(channel, func) {
-            const validChannels = ['log', 'rtmConnect', 'slackAuthenticated', 'teamUpdate', 'deleteTeam'];
+            const validChannels = ['log', 'rtmConnect', 'slackAuthenticated', 'teamUpdate', 'deleteTeam']
 
             if (validChannels.includes(channel)) {
                 // Deliberately strip event as it includes `sender`

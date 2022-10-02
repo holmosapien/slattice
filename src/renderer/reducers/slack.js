@@ -91,6 +91,8 @@ export default function slack(state = defaultSlackState, action) {
         {
             const { teamId, token, name, unread, typing } = action
 
+            const now = new Date()
+
             return update(state, {
                 teams: {
                     [teamId]: {
@@ -98,7 +100,8 @@ export default function slack(state = defaultSlackState, action) {
                             name,
                             token,
                             unread,
-                            typing
+                            typing,
+                            lastUpdate: now
                         }
                     }
                 }
