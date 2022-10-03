@@ -617,29 +617,25 @@ function _loadClientCounts(context, teamId) {
 function _parseClientCounts(context, teamId, clientCounts) {
     const fetchAllHistory = true
 
-    if (!_.isUndefined(clientCounts.channels)) {
-        clientCounts.channels.forEach((conversation) => {
-            const conversationId = conversation.id
-
-            _getConversationInfo(context, teamId, conversationId, fetchAllHistory)
-        })
+    if (!clientCounts.ok) {
+        return false
     }
 
-    if (!_.isUndefined(clientCounts.ims)) {
-        clientCounts.ims.forEach((conversation) => {
-            const conversationId = conversation.id
+    const conversations = [
+        ...clientCounts.channels,
+        ...clientCounts.ims,
+        ...clientCounts.mpims
+    ]
 
+    conversations.forEach((conversation) => {
+        const { id: conversationId, has_unreads: hasUnreads } = conversation
+
+        if (hasUnreads) {
             _getConversationInfo(context, teamId, conversationId, fetchAllHistory)
-        })
-    }
+        }
+    })
 
-    if (!_.isUndefined(clientCounts.mpims)) {
-        clientCounts.mpims.forEach((conversation) => {
-            const conversationId = conversation.id
-
-            _getConversationInfo(context, teamId, conversationId, fetchAllHistory)
-        })
-    }
+    return true
 }
 
 async function _loadUsers(context, teamId) {
