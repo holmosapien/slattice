@@ -32,7 +32,7 @@ export default class AppUpdater {
 let mainWindow: BrowserWindow | null = null
 
 ipcMain.on('rtmConnect', async (event, token) => {
-    context.logger(`[rtmConnect] token=${token}`)
+    context.logger('[rtmConnect] token=', token)
 
     rtmConnect(context, token)
 

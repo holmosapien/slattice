@@ -39,9 +39,24 @@ export default function slack(state = defaultSlackState, action) {
             let newTokens = {}
 
             action.config.tokens.forEach((token) => {
-                if (_.isUndefined(state.tokens[token])) {
-                    newTokens[token] = {
+                let userToken = undefined
+                let clientToken = undefined
+                let clientCookie = undefined
+
+                if (typeof token == 'string') {
+                    userToken = token
+                } else if (typeof token == 'object') {
+                    userToken = token.userToken
+                    clientToken = token.clientToken
+                    clientCookie = token.clientCookie
+                }
+
+                if (_.isUndefined(state.tokens[userToken])) {
+                    newTokens[userToken] = {
                         $set: {
+                            userToken,
+                            clientToken,
+                            clientCookie,
                             connected: false
                         }
                     }
@@ -55,13 +70,20 @@ export default function slack(state = defaultSlackState, action) {
             return update(state, newState)
         case ADD_TEAM:
         {
-            const token = action.token
+            const {
+                userToken,
+                clientToken,
+                clientCookie
+            } = action.token
 
-            if (_.isUndefined(state.tokens[token])) {
+            if (_.isUndefined(state.tokens[userToken])) {
                 return update(state, {
                     tokens: {
-                        [token]: {
+                        [userToken]: {
                             $set: {
+                                userToken,
+                                clientToken,
+                                clientCookie,
                                 connected: false
                             }
                         }
@@ -73,11 +95,11 @@ export default function slack(state = defaultSlackState, action) {
         }
         case REQUEST_CONNECTION:
         {
-            const token = action.token
+            const { userToken } = action.token
 
             return update(state, {
                 tokens: {
-                    [token]: {
+                    [userToken]: {
                         connected: {
                             $set: true
                         }

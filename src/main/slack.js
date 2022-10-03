@@ -1,4 +1,7 @@
+import { net } from 'electron'
 const { RTMClient } = require('@slack/rtm-api')
+
+const https = require('https');
 const _ = require('lodash')
 
 let teams = {}
@@ -10,7 +13,8 @@ export function rtmConnect(context, token) {
      *
      */
 
-    const teamId = Object.keys(teams).find((teamId) => teams[teamId].token == token)
+    const userToken = token.userToken
+    const teamId = Object.keys(teams).find((teamId) => teams[teamId].token.userToken == userToken)
 
     if (!_.isUndefined(teamId) && !_.isUndefined(teams[teamId]) && !_.isUndefined(teams[teamId].rtm)) {
         _processUnread(context, teamId)
@@ -21,7 +25,7 @@ export function rtmConnect(context, token) {
         return teams[teamId].rtm
     }
 
-    const rtm = new RTMClient(token, { useRtmConnect: true })
+    const rtm = new RTMClient(userToken, { useRtmConnect: true })
 
     rtm.on('authenticated', (event) => {
         context.logger('AUTHENTICATED: ', event)
@@ -353,8 +357,14 @@ function _handleAuthenticated(context, rtm, token, event) {
 
     teams[teamId] = team
 
-    _loadUsers(context, teamId)
-    _loadConversations(context, teamId)
+    const { clientToken, clientCookie } = token
+
+    if (!_.isUndefined(clientToken) && !_.isUndefined(clientCookie)) {
+        _loadClientCounts(context, teamId)
+    } else {
+        _loadUsers(context, teamId)
+        _loadConversations(context, teamId)
+    }
 
     _sendTeamUpdate(context, teamId)
 
@@ -559,6 +569,79 @@ function _handleJoined(context, teamId, event) {
     _processUnread(context, teamId)
 }
 
+function _loadClientCounts(context, teamId) {
+    const { clientToken, clientCookie } = teams[teamId].token
+
+    const requestUrl = new URL('https://api.slack.com/api/client.counts')
+
+    requestUrl.search = `token=${clientToken}`
+
+    const queryPath = `${requestUrl.pathname}${requestUrl.search}`
+
+    const options = {
+        headers: { 'Cookie': `d=${encodeURIComponent(clientCookie)}` },
+        host: requestUrl.host,
+        method: 'POST',
+        path: queryPath,
+        port: 443
+    }
+
+    const request = net.request(options)
+
+    request.on('response', function(result) {
+        let buffers = []
+
+        result.on('data', function(chunk) {
+            buffers.push(chunk)
+        })
+
+        result.on('end', function() {
+            const body = Buffer.concat(buffers)
+            const clientCounts = JSON.parse(body.toString())
+
+            /*
+             * Walk through all of the channels, IMs, and MPIMs looking for
+             * conversations with unread messages.
+             *
+             */
+
+            context.logger('[_loadClientCounts] clientCounts=', clientCounts)
+
+            _parseClientCounts(context, teamId, clientCounts)
+        })
+    })
+
+    request.end()
+}
+
+function _parseClientCounts(context, teamId, clientCounts) {
+    const fetchAllHistory = true
+
+    if (!_.isUndefined(clientCounts.channels)) {
+        clientCounts.channels.forEach((conversation) => {
+            const conversationId = conversation.id
+
+            _getConversationInfo(context, teamId, conversationId, fetchAllHistory)
+        })
+    }
+
+    if (!_.isUndefined(clientCounts.ims)) {
+        clientCounts.ims.forEach((conversation) => {
+            const conversationId = conversation.id
+
+            _getConversationInfo(context, teamId, conversationId, fetchAllHistory)
+        })
+    }
+
+    if (!_.isUndefined(clientCounts.mpims)) {
+        clientCounts.mpims.forEach((conversation) => {
+            const conversationId = conversation.id
+
+            _getConversationInfo(context, teamId, conversationId, fetchAllHistory)
+        })
+    }
+}
+
 async function _loadUsers(context, teamId) {
     for await (const page of teams[teamId].rtm.webClient.paginate('users.list')) {
         page.members.forEach((user) => {
@@ -716,7 +799,7 @@ function _getUserInfo(context, teamId, userId) {
                 displayName,
                 name,
                 realName,
-                unreadCount
+                unreadCount: 0
             }
         }
 
@@ -968,9 +1051,15 @@ function _processUnread(context, teamId) {
     let unread = {}
 
     Object.keys(teams[teamId].conversations).forEach((id) => {
-        const { lastMessage, lastRead, name, unreadCount } = teams[teamId].conversations[id]
+        const {
+            lastMessage,
+            lastRead,
+            name,
+            unreadCount,
+            isArchived
+        } = teams[teamId].conversations[id]
 
-        if (lastMessage && (lastMessage > lastRead)) {
+        if (lastMessage && (lastMessage > lastRead) && !isArchived) {
             unread[id] = {
                 name,
                 unreadCount

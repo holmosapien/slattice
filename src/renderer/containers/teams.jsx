@@ -5,7 +5,7 @@ import { Divider, Form, List, Message, Segment } from 'semantic-ui-react'
 import _ from 'lodash'
 
 import { saveConfig } from 'renderer/actions/config'
-import { addTeam, cleanTokens, deleteTeam } from 'renderer/actions/slack'
+import { addTeam, deleteTeam } from 'renderer/actions/slack'
 
 function TeamList({ teams }) {
     const dispatch = useDispatch()
@@ -37,25 +37,57 @@ export default function Teams() {
     const dispatch = useDispatch()
 
     const [authUrl, setAuthUrl] = useState(undefined)
-    const [newToken, setNewToken] = useState('')
+    const [userToken, setUserToken] = useState('')
+    const [clientToken, setClientToken] = useState('')
+    const [clientCookie, setClientCookie] = useState('')
 
     const { tokens, teams } = useSelector((state) => state.slack)
 
     useEffect(() => {
-        const configTokens = Object.keys(tokens)
-        const config = { tokens: configTokens }
+        const config = {
+            tokens: Object.keys(tokens).map((userToken) => {
+                const { clientToken, clientCookie } = tokens[userToken]
+
+                return {
+                    userToken,
+                    clientToken,
+                    clientCookie
+                }
+            })
+        }
 
         dispatch(saveConfig(config))
     }, [tokens])
 
-    const onUpdateNewToken = (e, { value }) => {
-        setNewToken(value)
+    const onUpdateUserToken = (e, { value }) => {
+        setUserToken(value)
+    }
+
+    const onUpdateClientToken = (e, { value }) => {
+        setClientToken(value)
+    }
+
+    const onUpdateClientCookie = (e, { value }) => {
+        setClientCookie(value)
     }
 
     const onUseLegacyToken = (e) => {
-        dispatch(addTeam(newToken))
+        let token = {
+            userToken: userToken,
+            clientToken: undefined,
+            clientCookie: undefined
+        }
 
-        setNewToken('')
+        if ((clientToken != '') && (clientCookie != '')) {
+            token.clientToken = clientToken
+            token.clientCookie = clientCookie
+        }
+
+        dispatch(addTeam(token))
+
+        setUserToken('')
+        setClientToken('')
+        setClientCookie('')
     }
 
     return (
@@ -71,14 +103,29 @@ export default function Teams() {
                 If you have a legacy Slack API token, you can enter it here.
             </Message>
             <Form>
-                <Form.Group>
-                    <Form.Input
-                        placeholder="Slack API Token"
-                        value={newToken}
-                        onChange={onUpdateNewToken}
-                    />
-                    <Form.Button primary onClick={onUseLegacyToken}>Add</Form.Button>
-                </Form.Group>
+                <Form.Input
+                    label="User Token"
+                    placeholder="xoxp-41521542796-42222584871-183664996856-5378ee4ba563403faa9d5ec31f205d8c"
+                    value={userToken}
+                    onChange={onUpdateUserToken}
+                />
+                <Message>
+                    The client token and cookie are optional, and are only used to help improve the
+                    performance of the initial sync of the Slack team's state.
+                </Message>
+                <Form.Input
+                    label="Client Token"
+                    placeholder="xoxc-766545737440-102539214108-9802303573610-4d55fa15a7f00498b89e4b77dc0e57de236923df38d6f42b4b68f681c7a4f299"
+                    value={clientToken}
+                    onChange={onUpdateClientToken}
+                />
+                <Form.Input
+                    label="Client Cookie"
+                    placeholder="xoxd-gwNDctMUVDQjlCMDMwMzMyCjY1MjVFOUQyLUQyRTQtNENFQS1BMUQyLTNCOEJERTk2NDczMgpFNDY0RjUwQy0yOTgyLTRENTgtOTRBNy00QzBFNzhFMUNCRjcKOTkzMTJFNzEtNjFBRS00NDlCLTlGQjAtQjkwNkM0REY1MTMyCjUxNjNFQTM0LT"
+                    value={clientCookie}
+                    onChange={onUpdateClientCookie}
+                />
+                <Form.Button primary onClick={onUseLegacyToken}>Add</Form.Button>
             </Form>
             <div style={
                 {

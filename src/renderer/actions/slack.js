@@ -20,7 +20,7 @@ export function addTeam(token) {
 }
 
 export function requestTokenConnection(token) {
-    console.log(`Connecting with token ${token} ...`)
+    console.log('Connecting with token', token, '...')
 
     return (dispatch) => {
         window.electron.ipcRenderer.rtmConnect(token)

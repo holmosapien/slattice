@@ -20,9 +20,9 @@ function Home() {
     const { tokens, teams } = useSelector((state) => state.slack)
 
     useEffect(() => {
-        Object.keys(tokens).forEach((token) => {
-            if (tokens[token].connected == false) {
-                dispatch(requestTokenConnection(token))
+        Object.keys(tokens).forEach((userToken) => {
+            if (tokens[userToken].connected == false) {
+                dispatch(requestTokenConnection(tokens[userToken]))
             }
         })
     }, [tokens])
