@@ -407,7 +407,7 @@ function _handleMessage(context, teamId, event) {
          *
          */
 
-        if (subtype == 'message_changed') {
+        if (['message_changed', 'message_replied'].includes(subtype)) {
             return
         }
 
@@ -457,6 +457,8 @@ function _handleMessage(context, teamId, event) {
     const conversation = team.conversations[channelId]
 
     if (_.isUndefined(conversation)) {
+        context.logger(`[_handleMessage] Creating new conversation for channel ${channelId}`)
+
         teams[teamId].conversations[channelId] = channelInfo
 
         _getConversationInfo(context, teamId, channelId)
@@ -466,6 +468,8 @@ function _handleMessage(context, teamId, event) {
          * Copy channel details from state.
          *
          */
+
+        context.logger(`[_handleMessage] Updating existing conversation for channel ${channelId}: `, conversation)
 
         channelInfo.lastRead = conversation.lastRead
         channelInfo.name = conversation.name
@@ -483,6 +487,16 @@ function _handleMessage(context, teamId, event) {
         }
 
         teams[teamId].conversations[channelId] = channelInfo
+
+        /*
+         * Persist the conversation details to the model.
+         *
+         */
+
+        const conversationName = channelInfo.name
+        const conversationType = _getConversationType(conversation)
+
+        context.model.updateConversation(teamId, channelId, conversationName, conversationType, lastMessage)
     }
 
     _processUnread(context, teamId)
@@ -756,7 +770,7 @@ async function _loadConversations(context, teamId) {
                             const now = new Date()
                             const difference = (now - oldDate) / 1000 / 60 / 60 / 24
 
-                            context.logger(`[_loadConversations] oldDate=`, oldDate, `, now=`, now, `, difference=${difference}`)
+                            context.logger(`[_loadConversations] name=`, conversation.name, `, oldDate=`, oldDate, `, now=`, now, `, difference=${difference}`)
 
                             if (difference < 31) {
                                 worthFetching = true
@@ -1055,7 +1069,7 @@ function _processUnread(context, teamId) {
             isArchived
         } = teams[teamId].conversations[id]
 
-        if (lastMessage && (lastMessage > lastRead) && !isArchived) {
+        if (lastMessage && (_.isUndefined(lastRead) || (lastMessage > lastRead)) && !isArchived) {
             unread[id] = {
                 name,
                 unreadCount

@@ -38,7 +38,11 @@ export default function slack(state = defaultSlackState, action) {
 
             let newTokens = {}
 
-            action.config.tokens.forEach((token) => {
+            const configTokens = (typeof action.config.tokens == 'object')
+                ? Object.keys(action.config.tokens)
+                : action.config.tokens
+
+            configTokens.forEach((token) => {
                 let userToken = undefined
                 let clientToken = undefined
                 let clientCookie = undefined
