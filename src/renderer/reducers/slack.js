@@ -38,9 +38,9 @@ export default function slack(state = defaultSlackState, action) {
 
             let newTokens = {}
 
-            const configTokens = (typeof action.config.tokens == 'object')
-                ? Object.keys(action.config.tokens)
-                : action.config.tokens
+            const configTokens = (action.config.tokens instanceof Array)
+                ? action.config.tokens
+                : Object.keys(action.config.tokens)
 
             configTokens.forEach((token) => {
                 let userToken = undefined
@@ -81,7 +81,7 @@ export default function slack(state = defaultSlackState, action) {
             } = action.token
 
             if (_.isUndefined(state.tokens[userToken])) {
-                return update(state, {
+                const newState = update(state, {
                     tokens: {
                         [userToken]: {
                             $set: {
@@ -93,6 +93,8 @@ export default function slack(state = defaultSlackState, action) {
                         }
                     }
                 })
+
+                return newState
             }
 
             return state

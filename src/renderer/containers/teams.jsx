@@ -45,7 +45,9 @@ export default function Teams() {
 
     useEffect(() => {
         const config = {
-            tokens: Object.keys(tokens).map((userToken) => {
+            tokens: Object.keys(tokens).filter((userToken) => {
+                return userToken.startsWith('xoxp')
+            }).map((userToken) => {
                 const { clientToken, clientCookie } = tokens[userToken]
 
                 return {
