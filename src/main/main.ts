@@ -8,165 +8,160 @@
  * When running `npm run build` or `npm run build:main`, this file is compiled to
  * `./src/main.js` using webpack. This gives us some performance wins.
  */
+import path from 'path';
+import { app, BrowserWindow, shell, ipcMain } from 'electron';
+import log from 'electron-log';
+import MenuBuilder from './menu';
+import context from './context';
+import model from './model';
+import { rtmConnect, refreshConversation, executeTest, deleteTeam } from './slack';
+import { resolveHtmlPath } from './util';
 
-import path from 'path'
-import { app, BrowserWindow, shell, ipcMain } from 'electron'
-import log from 'electron-log'
-
-import MenuBuilder from './menu'
-import context from './context'
-import model from './model'
-import { rtmConnect, refreshConversation, executeTest, deleteTeam } from './slack'
-import { resolveHtmlPath } from './util'
-
-export default class AppUpdater {
-    constructor() {
-        log.transports.file.level = 'info'
-    }
+class AppUpdater {
+  constructor() {
+    log.transports.file.level = 'info';
+  }
 }
 
-let mainWindow: BrowserWindow | null = null
+let mainWindow: BrowserWindow | null = null;
 
 ipcMain.on('rtmConnect', async (event, token) => {
-    context.logger('[rtmConnect] token=', token)
+  context.logger('[rtmConnect] token=', token);
 
-    rtmConnect(context, token)
+  rtmConnect(context, token);
 
-    event.reply('rtmConnect', token)
+  event.reply('rtmConnect', token);
 })
 
 ipcMain.on('refreshConversation', async (event, teamId, conversationId) => {
-    context.logger(`[refreshConversation] teamId=${teamId}}, conversationId=${conversationId}`)
+  context.logger(`[refreshConversation] teamId=${teamId}}, conversationId=${conversationId}`);
 
-    refreshConversation(context, teamId, conversationId)
+  refreshConversation(context, teamId, conversationId);
 })
 
 ipcMain.on('test', async (event, teamId, testType) => {
-    context.logger(`[test] teamId=${teamId}, testType=${testType}`)
+  context.logger(`[test] teamId=${teamId}, testType=${testType}`);
 
-    executeTest(context, teamId, testType)
+  executeTest(context, teamId, testType);
 })
 
 ipcMain.on('refreshTeam', async(event, teamId) => {
-    context.logger(`[refreshTeam] teamId=${teamId}`)
+  context.logger(`[refreshTeam] teamId=${teamId}`);
 })
 
 ipcMain.on('deleteTeam', async (event, teamId) => {
-    deleteTeam(context, teamId)
+  deleteTeam(context, teamId);
 })
 
 if (process.env.NODE_ENV === 'production') {
-    const sourceMapSupport = require('source-map-support')
-
-    sourceMapSupport.install()
+  const sourceMapSupport = require('source-map-support');
+  sourceMapSupport.install();
 }
 
-const isDebug = process.env.NODE_ENV === 'development' || process.env.DEBUG_PROD === 'true'
+const isDebug =
+  process.env.NODE_ENV === 'development' || process.env.DEBUG_PROD === 'true';
 
 if (isDebug) {
-    require('electron-debug')()
+  require('electron-debug')();
 }
 
 const installExtensions = async () => {
-    const installer = require('electron-devtools-installer')
-    const forceDownload = !!process.env.UPGRADE_EXTENSIONS
-    const extensions = ['REACT_DEVELOPER_TOOLS']
+  const installer = require('electron-devtools-installer');
+  const forceDownload = !!process.env.UPGRADE_EXTENSIONS;
+  const extensions = ['REACT_DEVELOPER_TOOLS'];
 
-    return installer
-        .default(
-            extensions.map((name) => installer[name]),
-            forceDownload
-        )
-        .catch(console.log)
-}
+  return installer
+    .default(
+      extensions.map((name) => installer[name]),
+      forceDownload,
+    )
+    .catch(console.log);
+};
 
 const createWindow = async () => {
-    if (isDebug) {
-        await installExtensions();
+  if (isDebug) {
+    await installExtensions();
+  }
+
+  const RESOURCES_PATH = app.isPackaged
+    ? path.join(process.resourcesPath, 'assets')
+    : path.join(__dirname, '../../assets');
+
+  const getAssetPath = (...paths: string[]): string => {
+    return path.join(RESOURCES_PATH, ...paths);
+  };
+
+  mainWindow = new BrowserWindow({
+    show: false,
+    width: 300,
+    height: 600,
+    icon: getAssetPath('icon.png'),
+    webPreferences: {
+      preload: app.isPackaged
+        ? path.join(__dirname, 'preload.js')
+        : path.join(__dirname, '../../.erb/dll/preload.js'),
+    },
+  });
+
+  context.setWindow(mainWindow);
+  context.setModel(model);
+
+  const userPath = app.getPath('userData');
+
+  model.initializeModel(context, userPath);
+  model.createTables();
+
+  mainWindow.loadURL(resolveHtmlPath('index.html'));
+
+  mainWindow.on('ready-to-show', () => {
+    if (!mainWindow) {
+      throw new Error('"mainWindow" is not defined');
     }
-
-    const RESOURCES_PATH = app.isPackaged
-        ? path.join(process.resourcesPath, 'assets')
-        : path.join(__dirname, '../../assets')
-
-    const getAssetPath = (...paths: string[]): string => {
-        return path.join(RESOURCES_PATH, ...paths)
+    if (process.env.START_MINIMIZED) {
+      mainWindow.minimize();
+    } else {
+      mainWindow.show();
     }
+  });
 
-    mainWindow = new BrowserWindow({
-        show: false,
-        width: 300,
-        height: 600,
-        icon: getAssetPath('icon.png'),
-        webPreferences: {
-            preload: app.isPackaged
-                ? path.join(__dirname, 'preload.js')
-                : path.join(__dirname, '../../.erb/dll/preload.js')
-        }
-    })
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
 
-    context.setWindow(mainWindow)
-    context.setModel(model)
+  const menuBuilder = new MenuBuilder(mainWindow);
+  menuBuilder.buildMenu();
 
-    const userPath = app.getPath('userData')
+  // Open urls in the user's browser
+  mainWindow.webContents.setWindowOpenHandler((edata) => {
+    shell.openExternal(edata.url);
+    return { action: 'deny' };
+  });
 
-    model.initializeModel(context, userPath)
-    model.createTables()
-
-    mainWindow.loadURL(resolveHtmlPath('index.html'))
-
-    mainWindow.on('ready-to-show', () => {
-        if (!mainWindow) {
-            throw new Error('"mainWindow" is not defined')
-        }
-
-        if (process.env.START_MINIMIZED) {
-            mainWindow.minimize()
-        } else {
-            mainWindow.show()
-        }
-    })
-
-    mainWindow.on('closed', () => {
-        mainWindow = null
-    });
-
-    const menuBuilder = new MenuBuilder(mainWindow);
-
-    menuBuilder.buildMenu()
-
-    // Open urls in the user's browser
-    mainWindow.webContents.setWindowOpenHandler((edata) => {
-        shell.openExternal(edata.url)
-        return { action: 'deny' }
-    })
-
-    // Remove this if your app does not use auto updates
-    // eslint-disable-next-line
-    new AppUpdater()
-}
+  // Remove this if your app does not use auto updates
+  // eslint-disable-next-line
+  new AppUpdater();
+};
 
 /**
  * Add event listeners...
  */
 
 app.on('window-all-closed', () => {
-    // Respect the OSX convention of having the application in memory even
-    // after all windows have been closed
-    if (process.platform !== 'darwin') {
-        app.quit()
-    }
-})
+  // Respect the OSX convention of having the application in memory even
+  // after all windows have been closed
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
 
 app
-    .whenReady()
-    .then(() => {
-        createWindow()
-
-        app.on('activate', () => {
-            // On macOS it's common to re-create a window in the app when the
-            // dock icon is clicked and there are no other windows open.
-            if (mainWindow === null) createWindow()
-        })
-    })
-    .catch(console.log)
+  .whenReady()
+  .then(() => {
+    createWindow();
+    app.on('activate', () => {
+      // On macOS it's common to re-create a window in the app when the
+      // dock icon is clicked and there are no other windows open.
+      if (mainWindow === null) createWindow();
+    });
+  })
+  .catch(console.log);
